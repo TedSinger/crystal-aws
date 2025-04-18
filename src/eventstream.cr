@@ -2,6 +2,8 @@ require "base64"
 
 module AWS
   module EventStream
+    # Format explanation here:
+    # https://docs.aws.amazon.com/AmazonS3/latest/API/RESTSelectObjectAppendix.html
     # Each message has this structure:
     #
     #   total_length   : Int32  (4 bytes)
@@ -67,6 +69,7 @@ module AWS
         while i < bytes.size
           key_length = bytes[i].to_u8
           key = bytes[i + 1, key_length]
+          # \x07 means the value is a string
           type_byte = bytes[i + key_length + 1].to_u8
           value_length = (bytes[i + key_length + 2].to_u16 << 8) | bytes[i + key_length + 3].to_u16
           value = bytes[i + key_length + 4, value_length]
