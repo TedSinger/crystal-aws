@@ -21,6 +21,34 @@ module AWS
 
       def initialize(@raw_headers : String, @payload : Bytes)
       end
+
+      def headers : Hash(String, String)
+        if @parsed_headers.nil?
+          @parsed_headers = headers_from_string(@raw_headers)
+        end
+        @parsed_headers.not_nil!
+      end
+
+      def headers_from_string(string : String) : Hash(String, String)
+        # example :
+        # "\x0b:event-type\x07\x00\x05chunk\x0d:content-type\x07\x00\x10application/json\x0d:message-type\x07\x00\x05event"
+        # format is key-length-byte, key, type-byte??, value-length-bytes, value
+        headers_hash = Hash(String, String).new
+        bytes = string.to_slice
+        i = 0
+        while i < bytes.size
+          key_length = bytes[i].to_u8
+          key = bytes[i + 1, key_length]
+          # \x07 means the value is a string
+          type_byte = bytes[i + key_length + 1].to_u8
+          value_length = (bytes[i + key_length + 2].to_u16 << 8) | bytes[i + key_length + 3].to_u16
+          value = bytes[i + key_length + 4, value_length]
+          headers_hash[String.new(key)] = String.new(value)
+          i += key_length + 4 + value_length
+        end
+        headers_hash
+      end
+
     end
 
     class EventStream
@@ -50,33 +78,6 @@ module AWS
         if calculated_message_crc != message_crc
           raise "Message CRC mismatch"
         end
-      end
-
-      def headers : Hash(String, String)
-        if @parsed_headers.nil?
-          @parsed_headers = headers_from_string(@raw_headers)
-        end
-        @parsed_headers
-      end
-
-      def headers_from_string(string : String) : Hash(String, String)
-        # example :
-        # "\x0b:event-type\x07\x00\x05chunk\x0d:content-type\x07\x00\x10application/json\x0d:message-type\x07\x00\x05event"
-        # format is key-length-byte, key, type-byte??, value-length-bytes, value
-        headers_hash = Hash(String, String).new
-        bytes = string.to_slice
-        i = 0
-        while i < bytes.size
-          key_length = bytes[i].to_u8
-          key = bytes[i + 1, key_length]
-          # \x07 means the value is a string
-          type_byte = bytes[i + key_length + 1].to_u8
-          value_length = (bytes[i + key_length + 2].to_u16 << 8) | bytes[i + key_length + 3].to_u16
-          value = bytes[i + key_length + 4, value_length]
-          headers_hash[key.to_s] = value.to_s
-          i += key_length + 4 + value_length
-        end
-        headers_hash
       end
 
       def next
