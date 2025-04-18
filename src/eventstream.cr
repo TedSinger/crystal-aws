@@ -29,28 +29,39 @@ module EventStream
         end
     end
 
-    def self.next_from_io(io : IO) : EventMessage | Nil
-        total_length : Int32 = io.read_bytes(Int32, IO::ByteFormat::BigEndian)
-        headers_length : Int32 = io.read_bytes(Int32, IO::ByteFormat::BigEndian)
-        prelude_crc = io.read_bytes(Int32, IO::ByteFormat::BigEndian)
-        headers_string = io.read_string(headers_length)
-        # total_length includes: 4 + 4 + headers_length + payload + 4 for CRC
-        # So payload length = total_length - 4(total len) - 4(headers len) - 4(prelude_crc) - headers_length - 4(message CRC)
-        payload_length = total_length - 4 - 4 - 4 - headers_length - 4
 
-        if payload_length < 0
-            return nil
+    class EventStream
+        include Iterator(EventMessage)
+
+        def initialize(@io : IO)
         end
-
-        payload_string = io.read_string(payload_length)
-        message_crc = io.read_bytes(Int32, IO::ByteFormat::BigEndian)
-
-        EventMessage.new(
-            total_length,
-            headers_length,
-            headers_string,
-            payload_string,
-            message_crc
-        )
+      
+        def next
+            if @io.closed?
+                return stop
+            end
+            total_length : Int32 = @io.read_bytes(Int32, IO::ByteFormat::BigEndian)
+            headers_length : Int32 = @io.read_bytes(Int32, IO::ByteFormat::BigEndian)
+            prelude_crc = @io.read_bytes(Int32, IO::ByteFormat::BigEndian)
+            headers_string = @io.read_string(headers_length)
+            # total_length includes: 4 + 4 + headers_length + payload + 4 for CRC
+            # So payload length = total_length - 4(total len) - 4(headers len) - 4(prelude_crc) - headers_length - 4(message CRC)
+            payload_length = total_length - 4 - 4 - 4 - headers_length - 4
+    
+            if payload_length < 0
+                raise "Payload length is negative"
+            end
+    
+            payload_string = @io.read_string(payload_length)
+            message_crc = @io.read_bytes(Int32, IO::ByteFormat::BigEndian)
+    
+            EventMessage.new(
+                total_length,
+                headers_length,
+                headers_string,
+                payload_string,
+                message_crc
+            )
+        end
     end
 end

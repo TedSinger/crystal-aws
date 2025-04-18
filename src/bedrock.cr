@@ -35,7 +35,7 @@ module AWS
         guardrail_version : String? = nil,
         performance_config_latency : String? = nil,
         trace : String? = nil
-      )
+      ) : Iterator(JSON::Any)
         headers = HTTP::Headers.new
         headers["X-Amzn-Bedrock-Accept"] = accept
         headers["Content-Type"] = content_type
@@ -57,26 +57,17 @@ module AWS
           headers["X-Amzn-Bedrock-Trace"] = trace
         end
 
-
-        ch = Channel(JSON::Any).new
-        http do |http|
-          http.post(
+        http do |client|
+          client.post(
             path: "/model/#{model_id}/invoke-with-response-stream",
             headers: headers,
             body: body
           ) do |response|
-            spawn do
-              until response.body_io.closed?
-                message = EventStream.next_from_io(response.body_io)
-                if message
-                  ch.send(generic_event_to_bedrock_event(message))
-                end
-              end
-              ch.close
-            end
+            io = response.body_io
+            return EventStream::EventStream.new(io).map { |event| generic_event_to_bedrock_event(event) }
           end
         end
-        ch
+        
       end
 
     end
