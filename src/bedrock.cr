@@ -20,14 +20,14 @@ module AWS
       end
 
 
-      def generic_event_to_bedrock_event(event : EventStream::EventMessage) : JSON::Any
+      def generic_event_to_bedrock_event(event : EventStream::EventMessage) : Hash(String, JSON::Any)
         payload_hash = JSON.parse(String.new(event.payload)).as_h
         # named "bytes" but that doesn't make sense for JSON
         encoded_bytes = payload_hash["bytes"].as_s
         # The only other field is "p" which appears to be a sanity check. Its value is some amount of the alphabet, in order, lowercase, then uppercase, then digits.
         inner_json_bytes = Base64.decode(encoded_bytes)
         inner_json_str = String.new(inner_json_bytes)
-        JSON.parse(inner_json_str)
+        JSON.parse(inner_json_str).as_h
       end
 
       def invoke_model_with_response_stream(
@@ -39,7 +39,7 @@ module AWS
         guardrail_version : String? = nil,
         performance_config_latency : String? = nil,
         trace : String? = nil
-      ) : Iterator(JSON::Any)
+      ) : Iterator(Hash(String, JSON::Any))
         headers = HTTP::Headers.new
         headers["X-Amzn-Bedrock-Accept"] = accept
         headers["Content-Type"] = content_type
