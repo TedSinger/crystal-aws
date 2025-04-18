@@ -4,89 +4,10 @@ require "base64"
 
 require "./eventstream"
 require "./client"
+require "./bedrock_events"
 
 module AWS
   module BedrockRuntime
-    class BedrockRuntimeEvent
-      include JSON::Serializable
-      class MessageStart
-
-        # {"type" => "message_start", "message" => {"id" => "msg_bdrk_01GuZRyDETP2CY6ZsiYoLgZT", "type" => "message", "role" => "assistant", "model" => "claude-3-5-sonnet-20241022", "content" => [], "stop_reason" => nil, "stop_sequence" => nil, "usage" => {"input_tokens" => 91, "cache_creation_input_tokens" => 0, "cache_read_input_tokens" => 0, "output_tokens" => 7}}}
-        include JSON::Serializable
-
-        property type : String
-        property message : Message
-
-        struct Message
-          include JSON::Serializable
-
-          property id : String
-          property type : String
-          property role : String
-          property model : String
-          property content : Array(JSON::Any)
-          @[JSON::Field(key: "stop_reason")]
-          property stop_reason : String?
-          @[JSON::Field(key: "stop_sequence")]
-          property stop_sequence : String?
-          property usage : Usage
-
-          struct Usage
-            include JSON::Serializable
-
-            @[JSON::Field(key: "input_tokens")]
-            property input_tokens : Int32
-            @[JSON::Field(key: "cache_creation_input_tokens")] 
-            property cache_creation_input_tokens : Int32
-            @[JSON::Field(key: "cache_read_input_tokens")]
-            property cache_read_input_tokens : Int32
-            @[JSON::Field(key: "output_tokens")]
-            property output_tokens : Int32
-          end
-        end
-      end
-
-      class ContentBlockStart
-        # {"type" => "content_block_start", "index" => 0, "content_block" => {"type" => "text", "text" => ""}}
-        include JSON::Serializable
-
-        property type : String
-        property index : Int32
-        @[JSON::Field(key: "content_block")]
-        property content_block : ContentBlock
-
-        struct ContentBlock
-          include JSON::Serializable
-          
-          property type : String
-          property text : String
-        end
-      end
-
-      class ContentBlockDelta
-        # {"type" => "content_block_delta", "index" => 0, "delta" => {"type" => "text_delta", "text" => "\n\nA jungle fowl wandere"}}
-        include JSON::Serializable
-
-        property type : String
-        property index : Int32
-        property delta : Delta
-
-        struct Delta
-          include JSON::Serializable
-
-          property type : String
-          property text : String
-        end
-      end
-
-      class ContentBlockStop
-        # {"type" => "content_block_stop", "index" => 0}
-        include JSON::Serializable
-
-        property type : String
-        property index : Int32
-      end
-    end
 
     class Client < AWS::Client
       SERVICE_NAME = "bedrock-runtime"
@@ -101,16 +22,14 @@ module AWS
       end
 
 
-      def generic_event_to_bedrock_event(event : EventStream::EventMessage) : Hash(String, JSON::Any)
+      def generic_event_to_bedrock_event(event : EventStream::EventMessage) : BedrockRuntimeEvent
         payload_hash = JSON.parse(String.new(event.payload)).as_h
         # named "bytes" but that doesn't make sense for JSON
         encoded_bytes = payload_hash["bytes"].as_s
         # The only other field is "p" which appears to be a sanity check. Its value is some amount of the alphabet, in order, lowercase, then uppercase, then digits.
         inner_json_bytes = Base64.decode(encoded_bytes)
         inner_json_str = String.new(inner_json_bytes)
-        ret = JSON.parse(inner_json_str).as_h
-        puts BedrockRuntimeEvent.from_json(inner_json_str)
-        ret
+        BedrockRuntimeEvent.specialize_from_json(inner_json_str)
       end
 
       def invoke_model_with_response_stream(
@@ -122,7 +41,7 @@ module AWS
         guardrail_version : String? = nil,
         performance_config_latency : String? = nil,
         trace : String? = nil
-      ) : Iterator(Hash(String, JSON::Any))
+      ) : Iterator(BedrockRuntimeEvent)
         headers = HTTP::Headers.new
         headers["X-Amzn-Bedrock-Accept"] = accept
         headers["Content-Type"] = content_type
