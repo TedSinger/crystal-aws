@@ -15,7 +15,7 @@ module AWS
 
     struct EventMessage
       getter headers : Hash(String, String)
-      getter payload : String
+      getter payload : Bytes
 
       def initialize(@headers, @payload)
       end
@@ -27,7 +27,7 @@ module AWS
       def initialize(@io : IO)
       end
 
-      def check_crc(headers_string, payload_string, total_length : Int32, headers_length : Int32, prelude_crc : UInt32, message_crc : UInt32)
+      def check_crc(headers_string, payload_bytes, total_length : Int32, headers_length : Int32, prelude_crc : UInt32, message_crc : UInt32)
         prelude_buffer = IO::Memory.new(8)
         prelude_buffer.write_bytes(total_length, IO::ByteFormat::BigEndian)
         prelude_buffer.write_bytes(headers_length, IO::ByteFormat::BigEndian)
@@ -42,7 +42,7 @@ module AWS
         message_buffer.write_bytes(headers_length, IO::ByteFormat::BigEndian)
         message_buffer.write_bytes(prelude_crc, IO::ByteFormat::BigEndian)
         message_buffer.write(headers_string.to_slice)
-        message_buffer.write(payload_string.to_slice)
+        message_buffer.write(payload_bytes)
 
         calculated_message_crc = Digest::CRC32.checksum(message_buffer.to_slice)
         if calculated_message_crc != message_crc
@@ -86,13 +86,15 @@ module AWS
         if payload_length < 0
           raise "Payload length is negative"
         end
+        payload_bytes = Bytes.new(payload_length)
+        @io.read(payload_bytes)
 
-        payload_string = @io.read_string(payload_length)
         message_crc = @io.read_bytes(UInt32, IO::ByteFormat::BigEndian)
+        check_crc(headers_string, payload_bytes, total_length, headers_length, prelude_crc, message_crc)
 
         EventMessage.new(
           headers_hash,
-          payload_string
+          payload_bytes
         )
       end
     end

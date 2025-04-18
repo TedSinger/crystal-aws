@@ -21,7 +21,7 @@ module AWS
 
 
       def generic_event_to_bedrock_event(event : EventStream::EventMessage) : JSON::Any
-        payload_hash = JSON.parse(event.payload).as_h
+        payload_hash = JSON.parse(String.new(event.payload)).as_h
         # named "bytes" but that doesn't make sense for JSON
         encoded_bytes = payload_hash["bytes"].as_s
         inner_json_bytes = Base64.decode(encoded_bytes)
