@@ -14,10 +14,10 @@ module AWS
     # Note: We read the raw headers block here but do not parse individual header fields
 
     struct EventMessage
-      getter headers : Hash(String, String)
+      @parsed_headers : Hash(String, String)?
       getter payload : Bytes
 
-      def initialize(@headers, @payload)
+      def initialize(@raw_headers : String, @payload : Bytes)
       end
     end
 
@@ -50,6 +50,13 @@ module AWS
         end
       end
 
+      def headers : Hash(String, String)
+        if @parsed_headers.nil?
+          @parsed_headers = headers_from_string(@raw_headers)
+        end
+        @parsed_headers
+      end
+
       def headers_from_string(string : String) : Hash(String, String)
         # example :
         # "\x0b:event-type\x07\x00\x05chunk\x0d:content-type\x07\x00\x10application/json\x0d:message-type\x07\x00\x05event"
@@ -76,9 +83,8 @@ module AWS
         total_length : Int32 = @io.read_bytes(Int32, IO::ByteFormat::BigEndian)
         headers_length : Int32 = @io.read_bytes(Int32, IO::ByteFormat::BigEndian)
         prelude_crc = @io.read_bytes(UInt32, IO::ByteFormat::BigEndian)
-
         headers_string = @io.read_string(headers_length)
-        headers_hash = headers_from_string(headers_string)
+
         # total_length includes: 4 + 4 + headers_length + payload + 4 for CRC
         # So payload length = total_length - 4(total len) - 4(headers len) - 4(prelude_crc) - headers_length - 4(message CRC)
         payload_length = total_length - 4 - 4 - 4 - headers_length - 4
@@ -93,7 +99,7 @@ module AWS
         check_crc(headers_string, payload_bytes, total_length, headers_length, prelude_crc, message_crc)
 
         EventMessage.new(
-          headers_hash,
+          headers_string,
           payload_bytes
         )
       end
