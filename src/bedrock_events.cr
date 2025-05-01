@@ -10,18 +10,13 @@ module AWS
 
       macro handle_json_access_pattern(known_primitive_keys = [] of String, known_object_keys = [] of String)
         def [](key : String)
-          ret = {} of String => JSON::Any
           {% for known_key in known_primitive_keys %}
-          ret[{{known_key}}] = JSON::Any.new(@{{known_key.id}})
+          return JSON::Any.new(@{{known_key.id}}) if key == {{known_key}}
           {% end %}
           {% for known_key in known_object_keys %}
-          ret[{{known_key}}] = JSON.parse(@{{known_key.id}}.to_json)
+          return JSON.parse(@{{known_key.id}}.to_json) if key == {{known_key}}
           {% end %}
-          if ret.has_key?(key)
-            ret[key]
-          else
-            @json_unmapped[key]
-          end
+          @json_unmapped[key]
         end
       end
 
