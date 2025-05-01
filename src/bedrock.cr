@@ -22,16 +22,6 @@ module AWS
       end
 
 
-      def generic_event_to_bedrock_event(event : EventStream::EventMessage) : BedrockRuntimeEvent
-        payload_hash = JSON.parse(String.new(event.payload)).as_h
-        # named "bytes" but that doesn't make sense for JSON
-        encoded_bytes = payload_hash["bytes"].as_s
-        # The only other field is "p" which appears to be a sanity check. Its value is some amount of the alphabet, in order, lowercase, then uppercase, then digits.
-        inner_json_bytes = Base64.decode(encoded_bytes)
-        inner_json_str = String.new(inner_json_bytes)
-        BedrockRuntimeEvent.specialize_from_json(inner_json_str)
-      end
-
       def invoke_model_with_response_stream(
         model_id : String,
         body : String,
@@ -70,7 +60,7 @@ module AWS
             body: body
           ) do |response|
             io = response.body_io
-            return EventStream::EventStream.new(io).map { |event| generic_event_to_bedrock_event(event) }
+            return EventStream::EventStream.new(io).map { |event| BedrockRuntimeEvent.from_event(event) }
           end
         end
         
