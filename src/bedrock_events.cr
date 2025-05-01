@@ -8,11 +8,14 @@ module AWS
       include JSON::Serializable::Unmapped
 
 
-      macro handle_json_access_pattern(known_keys = [] of String)
+      macro handle_json_access_pattern(known_primitive_keys = [] of String, known_object_keys = [] of String)
         def [](key : String)
           ret = {} of String => JSON::Any
-          {% for known_key in known_keys %}
+          {% for known_key in known_primitive_keys %}
           ret[{{known_key}}] = JSON::Any.new(@{{known_key.id}})
+          {% end %}
+          {% for known_key in known_object_keys %}
+          ret[{{known_key}}] = JSON.parse(@{{known_key.id}}.to_json)
           {% end %}
           if ret.has_key?(key)
             ret[key]
@@ -22,7 +25,7 @@ module AWS
         end
       end
 
-      handle_json_access_pattern([] of String)
+      handle_json_access_pattern([] of String, [] of String)
 
       def self.from_event(event : EventStream::EventMessage) : BedrockRuntimeEvent
         payload_hash = JSON.parse(String.new(event.payload)).as_h
@@ -55,7 +58,7 @@ module AWS
 
         property message : Message
 
-        handle_json_access_pattern(["message"])
+        handle_json_access_pattern([] of String, ["message"])
 
         class Message < BedrockRuntimeEvent
           include JSON::Serializable
@@ -71,7 +74,7 @@ module AWS
           @[JSON::Field(key: "stop_sequence")]
           property stop_sequence : String?
           property usage : Usage
-          handle_json_access_pattern(["id", "type", "role", "model", "content", "stop_reason", "stop_sequence", "usage"])
+          handle_json_access_pattern(["id", "type", "role", "model", "content", "stop_reason", "stop_sequence"], ["usage"])
 
           class Usage < BedrockRuntimeEvent
             include JSON::Serializable
@@ -84,7 +87,7 @@ module AWS
             property cache_read_input_tokens : Int32?
             @[JSON::Field(key: "output_tokens")]
             property output_tokens : Int32
-            handle_json_access_pattern(["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"])
+            handle_json_access_pattern(["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"], [] of String)
 
           end
         end
@@ -100,14 +103,14 @@ module AWS
         @[JSON::Field(key: "content_block")]
         property content_block : ContentBlock
 
-        handle_json_access_pattern(["type", "index", "content_block"])
+        handle_json_access_pattern(["type", "index"], ["content_block"])
         class ContentBlock < BedrockRuntimeEvent
           include JSON::Serializable
           include JSON::Serializable::Unmapped
 
           property type : String
           property text : String
-          handle_json_access_pattern(["type", "text"])
+          handle_json_access_pattern(["type", "text"], [] of String)
         end
       end
 
@@ -120,14 +123,14 @@ module AWS
         property index : Int32
         property delta : Delta
 
-        handle_json_access_pattern(["type", "index", "delta"])
+        handle_json_access_pattern(["type", "index"], ["delta"])
         class Delta < BedrockRuntimeEvent
           include JSON::Serializable
           include JSON::Serializable::Unmapped
 
           property type : String
           property text : String
-          handle_json_access_pattern(["type", "text"])
+          handle_json_access_pattern(["type", "text"], [] of String)
         end
       end
 
@@ -137,7 +140,7 @@ module AWS
         include JSON::Serializable::Unmapped
         property type : String
         property index : Int32
-        handle_json_access_pattern(["type", "index"])
+        handle_json_access_pattern(["type", "index"], [] of String)
       end
     end
   end
