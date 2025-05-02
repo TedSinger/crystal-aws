@@ -29,6 +29,10 @@ module AWS
         # The only other field is "p" which appears to be a sanity check. Its value is some amount of the alphabet, in order, lowercase, then uppercase, then digits.
         inner_json_bytes = Base64.decode(encoded_bytes)
         json_str = String.new(inner_json_bytes)
+        from_event_payload(json_str)
+      end
+
+      def self.from_event_payload(json_str : String) : BedrockRuntimeEvent
         raw = JSON.parse(json_str).as_h
 
         case raw["type"]
@@ -51,9 +55,10 @@ module AWS
         include JSON::Serializable
         include JSON::Serializable::Unmapped
 
+        property type : String
         property message : Message
 
-        handle_json_access_pattern([] of String, ["message"])
+        handle_json_access_pattern(["type"], ["message"])
 
         class Message < BedrockRuntimeEvent
           include JSON::Serializable
