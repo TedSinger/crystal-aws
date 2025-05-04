@@ -59,8 +59,12 @@ module AWS
             headers: headers,
             body: body
           ) do |response|
-            io = response.body_io
-            return EventStream::EventStream.new(io).map { |event| BedrockRuntimeEvent.from_event(event) }
+            if response.success?
+              io = response.body_io
+              return EventStream::EventStream.new(io).map { |event| BedrockRuntimeEvent.from_event(event) }
+            else
+              raise "Failed to invoke model: #{response.status_code}"
+            end
           end
         end
         
