@@ -84,7 +84,11 @@ module AWS
         if @io.closed?
           return stop
         end
-        total_length : Int32 = @io.read_bytes(Int32, IO::ByteFormat::BigEndian)
+        begin
+          total_length : Int32 = @io.read_bytes(Int32, IO::ByteFormat::BigEndian)
+        rescue IO::EOFError
+          return stop
+        end
         headers_length : Int32 = @io.read_bytes(Int32, IO::ByteFormat::BigEndian)
         prelude_crc = @io.read_bytes(UInt32, IO::ByteFormat::BigEndian)
         headers_string = @io.read_string(headers_length)
