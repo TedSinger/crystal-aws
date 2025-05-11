@@ -4,14 +4,14 @@ require "../../src/eventstream.cr"
 
 describe AWS do
   describe AWS::BedrockRuntime do
-    describe AWS::BedrockRuntime::BedrockRuntimeEvent do
+    describe AWS::BedrockRuntime::BedrockRuntimeInvokeStreamEvent do
       real_message = {"type" => "message_start", "message" => {"id" => "msg_bdrk_01GuZRyDETP2CY6ZsiYoLgZT", "type" => "message", "role" => "assistant", "model" => "claude-3-5-sonnet-20241022", "content" => [] of String, "stop_reason" => nil, "stop_sequence" => nil, "usage" => {"input_tokens" => 91, "cache_creation_input_tokens" => 0, "cache_read_input_tokens" => 0, "output_tokens" => 7}}}
       it "knows some message types" do
-        event = AWS::BedrockRuntime::BedrockRuntimeEvent.from_event_payload(
+        event = AWS::BedrockRuntime::BedrockRuntimeInvokeStreamEvent.from_event_payload(
           real_message.to_json
         )
         case event
-        when AWS::BedrockRuntime::BedrockRuntimeEvent::MessageStart
+        when AWS::BedrockRuntime::BedrockRuntimeInvokeStreamEvent::MessageStart
           event.type.should eq("message_start")
           event.message.id.should eq("msg_bdrk_01GuZRyDETP2CY6ZsiYoLgZT")
           event.message.type.should eq("message")
@@ -23,7 +23,7 @@ describe AWS do
         end
       end
       it "can access fields through the unmapped json" do
-        event = AWS::BedrockRuntime::BedrockRuntimeEvent.from_event_payload(
+        event = AWS::BedrockRuntime::BedrockRuntimeInvokeStreamEvent.from_event_payload(
           real_message.to_json
         )
         event["type"].should eq("message_start")
@@ -34,12 +34,12 @@ describe AWS do
         event["message"]["content"].should eq([] of String)
       end
       it "can apply types to messages with some unknown fields" do
-        event = AWS::BedrockRuntime::BedrockRuntimeEvent.from_event_payload(
+        event = AWS::BedrockRuntime::BedrockRuntimeInvokeStreamEvent.from_event_payload(
           real_message.merge({"UNKNOWN_FIELD" => 4}).to_json
         )
         event["UNKNOWN_FIELD"].should eq(4)
         case event
-        when AWS::BedrockRuntime::BedrockRuntimeEvent::MessageStart
+        when AWS::BedrockRuntime::BedrockRuntimeInvokeStreamEvent::MessageStart
           true.should eq(true)
         else
           false.should eq(true)
@@ -47,7 +47,7 @@ describe AWS do
       end
       it "accepts unknown message types" do
         message = {"type" => "UNKNOWN_TYPE", "UNKNOWN_FIELD" => 4}
-        event = AWS::BedrockRuntime::BedrockRuntimeEvent.from_event_payload(
+        event = AWS::BedrockRuntime::BedrockRuntimeInvokeStreamEvent.from_event_payload(
           message.to_json
         )
         event["type"].should eq("UNKNOWN_TYPE")

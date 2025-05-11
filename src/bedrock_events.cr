@@ -2,27 +2,90 @@ require "json"
 
 module AWS
   module BedrockRuntime
+    macro handle_json_access_pattern(known_primitive_keys = [] of String, known_object_keys = [] of String)
+      def [](key : String)
+        {% for known_key in known_primitive_keys %}
+        return JSON::Any.new(@{{known_key.id}}) if key == {{known_key}}
+        {% end %}
+        {% for known_key in known_object_keys %}
+        return JSON.parse(@{{known_key.id}}.to_json) if key == {{known_key}}
+        {% end %}
+        @json_unmapped[key]
+      end
+    end
 
-    class BedrockRuntimeEvent
+    class ConverseStreamEvent
       include JSON::Serializable
       include JSON::Serializable::Unmapped
 
+      AWS::BedrockRuntime.handle_json_access_pattern([] of String, [] of String)
 
-      macro handle_json_access_pattern(known_primitive_keys = [] of String, known_object_keys = [] of String)
-        def [](key : String)
-          {% for known_key in known_primitive_keys %}
-          return JSON::Any.new(@{{known_key.id}}) if key == {{known_key}}
-          {% end %}
-          {% for known_key in known_object_keys %}
-          return JSON.parse(@{{known_key.id}}.to_json) if key == {{known_key}}
-          {% end %}
-          @json_unmapped[key]
+      def self.from_event(event : EventStream::EventMessage) : ConverseStreamEvent
+        payload_hash = JSON.parse(String.new(event.payload)).as_h
+        if payload_hash["contentBlockIndex"]? && payload_hash["delta"]?
+          ContentBlockDelta.from_json(String.new(event.payload))
+        elsif payload_hash["stopReason"]?
+          ContentBlockStop.from_json(String.new(event.payload))
+        elsif payload_hash["metrics"]?
+          Metrics.from_json(String.new(event.payload))
+        else
+          # {"contentBlockIndex" => 0, "p" => "abcdefghij"}
+          ConverseStreamEvent.from_json(String.new(event.payload))
         end
       end
 
-      handle_json_access_pattern([] of String, [] of String)
+      class ContentBlockDelta < ConverseStreamEvent
+        # {"contentBlockIndex" => 0, "delta" => {"text" => " situation or topic you're inqu"}, "p" => "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO"}
+        property contentBlockIndex : Int32
+        property delta : Delta
 
-      def self.from_event(event : EventStream::EventMessage) : BedrockRuntimeEvent
+        AWS::BedrockRuntime.handle_json_access_pattern(["contentBlockIndex", "delta"], [] of String)
+
+        class Delta < ConverseStreamEvent
+          property text : String?
+          property toolUse : ToolUse?
+          AWS::BedrockRuntime.handle_json_access_pattern(["text", "toolUse"], [] of String)
+
+          class ToolUse < ConverseStreamEvent
+            property input : String
+            AWS::BedrockRuntime.handle_json_access_pattern(["input"], [] of String)
+          end
+        end
+      end
+
+      class ContentBlockStop < ConverseStreamEvent
+        # {"p" => "abcdefghijklmnopqrstu", "stopReason" => "end_turn"}
+        property stopReason : String
+        AWS::BedrockRuntime.handle_json_access_pattern(["stopReason"], [] of String)
+      end
+
+      class Metrics < ConverseStreamEvent
+        # {"metrics" => {"latencyMs" => 2467}, "p" => "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ", "usage" => {"inputTokens" => 304, "outputTokens" => 70, "totalTokens" => 374}}
+        property metrics : Metrics
+        property usage : Usage
+        AWS::BedrockRuntime.handle_json_access_pattern(["metrics", "usage"], [] of String)
+
+        class Metrics < ConverseStreamEvent
+          property latencyMs : Int32
+          AWS::BedrockRuntime.handle_json_access_pattern(["latencyMs"], [] of String)
+        end
+
+        class Usage < ConverseStreamEvent
+          property inputTokens : Int32
+          property outputTokens : Int32
+          property totalTokens : Int32
+          AWS::BedrockRuntime.handle_json_access_pattern(["inputTokens", "outputTokens", "totalTokens"], [] of String)
+        end
+      end
+    end
+
+    class InvokeStreamEvent
+      include JSON::Serializable
+      include JSON::Serializable::Unmapped
+
+      AWS::BedrockRuntime.handle_json_access_pattern([] of String, [] of String)
+
+      def self.from_event(event : EventStream::EventMessage) : InvokeStreamEvent
         payload_hash = JSON.parse(String.new(event.payload)).as_h
         # named "bytes" but that doesn't make sense for JSON
         encoded_bytes = payload_hash["bytes"].as_s
@@ -32,7 +95,7 @@ module AWS
         from_event_payload(json_str)
       end
 
-      def self.from_event_payload(json_str : String) : BedrockRuntimeEvent
+      def self.from_event_payload(json_str : String) : InvokeStreamEvent
         raw = JSON.parse(json_str).as_h
 
         case raw["type"]
@@ -46,101 +109,71 @@ module AWS
           ContentBlockStop.from_json(json_str)
         else
           # No subtype - everything can be accessed through the unmapped json
-          BedrockRuntimeEvent.from_json(json_str)
+          InvokeStreamEvent.from_json(json_str)
         end
       end
 
-      class MessageStart < BedrockRuntimeEvent
+      class MessageStart < InvokeStreamEvent
         # {"type" => "message_start", "message" => {"id" => "msg_bdrk_01GuZRyDETP2CY6ZsiYoLgZT", "type" => "message", "role" => "assistant", "model" => "claude-3-5-sonnet-20241022", "content" => [], "stop_reason" => nil, "stop_sequence" => nil, "usage" => {"input_tokens" => 91, "cache_creation_input_tokens" => 0, "cache_read_input_tokens" => 0, "output_tokens" => 7}}}
-        include JSON::Serializable
-        include JSON::Serializable::Unmapped
-
         property type : String
         property message : Message
+        AWS::BedrockRuntime.handle_json_access_pattern(["type"], ["message"])
 
-        handle_json_access_pattern(["type"], ["message"])
-
-        class Message < BedrockRuntimeEvent
-          include JSON::Serializable
-          include JSON::Serializable::Unmapped
-
+        class Message < InvokeStreamEvent
           property id : String
           property type : String
           property role : String
           property model : String
           property content : Array(JSON::Any)
-          @[JSON::Field(key: "stop_reason")]
           property stop_reason : String?
-          @[JSON::Field(key: "stop_sequence")]
           property stop_sequence : String?
           property usage : Usage
-          handle_json_access_pattern(["id", "type", "role", "model", "content", "stop_reason", "stop_sequence"], ["usage"])
+          AWS::BedrockRuntime.handle_json_access_pattern(["id", "type", "role", "model", "content", "stop_reason", "stop_sequence"], ["usage"])
 
-          class Usage < BedrockRuntimeEvent
-            include JSON::Serializable
-            include JSON::Serializable::Unmapped
-            @[JSON::Field(key: "input_tokens")]
+          class Usage < InvokeStreamEvent
             property input_tokens : Int32
-            @[JSON::Field(key: "cache_creation_input_tokens")]
             property cache_creation_input_tokens : Int32?
-            @[JSON::Field(key: "cache_read_input_tokens")]
             property cache_read_input_tokens : Int32?
-            @[JSON::Field(key: "output_tokens")]
             property output_tokens : Int32
-            handle_json_access_pattern(["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"], [] of String)
-
+            AWS::BedrockRuntime.handle_json_access_pattern(["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"], [] of String)
           end
         end
       end
 
-      class ContentBlockStart < BedrockRuntimeEvent
+      class ContentBlockStart < InvokeStreamEvent
         # {"type" => "content_block_start", "index" => 0, "content_block" => {"type" => "text", "text" => ""}}
-        include JSON::Serializable
-        include JSON::Serializable::Unmapped
-
         property type : String
         property index : Int32
-        @[JSON::Field(key: "content_block")]
         property content_block : ContentBlock
+        AWS::BedrockRuntime.handle_json_access_pattern(["type", "index"], ["content_block"])
 
-        handle_json_access_pattern(["type", "index"], ["content_block"])
-        class ContentBlock < BedrockRuntimeEvent
-          include JSON::Serializable
-          include JSON::Serializable::Unmapped
-
+        class ContentBlock < InvokeStreamEvent
           property type : String
           property text : String
-          handle_json_access_pattern(["type", "text"], [] of String)
+          AWS::BedrockRuntime.handle_json_access_pattern(["type", "text"], [] of String)
         end
       end
 
-      class ContentBlockDelta < BedrockRuntimeEvent
+      class ContentBlockDelta < InvokeStreamEvent
         # {"type" => "content_block_delta", "index" => 0, "delta" => {"type" => "text_delta", "text" => "\n\nA jungle fowl wandere"}}
-        include JSON::Serializable
-        include JSON::Serializable::Unmapped
-
         property type : String
         property index : Int32
         property delta : Delta
 
-        handle_json_access_pattern(["type", "index"], ["delta"])
-        class Delta < BedrockRuntimeEvent
-          include JSON::Serializable
-          include JSON::Serializable::Unmapped
+        AWS::BedrockRuntime.handle_json_access_pattern(["type", "index"], ["delta"])
 
+        class Delta < InvokeStreamEvent
           property type : String
           property text : String
-          handle_json_access_pattern(["type", "text"], [] of String)
+          AWS::BedrockRuntime.handle_json_access_pattern(["type", "text"], [] of String)
         end
       end
 
-      class ContentBlockStop < BedrockRuntimeEvent
+      class ContentBlockStop < InvokeStreamEvent
         # {"type" => "content_block_stop", "index" => 0}
-        include JSON::Serializable
-        include JSON::Serializable::Unmapped
         property type : String
         property index : Int32
-        handle_json_access_pattern(["type", "index"], [] of String)
+        AWS::BedrockRuntime.handle_json_access_pattern(["type", "index"], [] of String)
       end
     end
   end
