@@ -48,7 +48,6 @@ module AWS
         end
         headers_hash
       end
-
     end
 
     class EventStream

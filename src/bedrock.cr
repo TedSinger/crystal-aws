@@ -1,6 +1,7 @@
 require "json"
 require "awscr-signer"
 require "base64"
+require "http/status"
 
 require "./eventstream"
 require "./client"
@@ -25,7 +26,7 @@ module AWS
       def converse_stream(
         model_id : String,
         body : String,
-      ) : Iterator(ConverseStreamEvent)
+      ) : Iterator(String) | Tuple(HTTP::Status, String)
         # https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html
         # a bit different from invoke_model_with_response_stream
         headers = HTTP::Headers.new
@@ -49,9 +50,9 @@ module AWS
           ) do |response|
             if response.success?
               io = response.body_io
-              return EventStream::EventStream.new(io).map { |event| ConverseStreamEvent.from_event(event) }
+              return EventStream::EventStream.new(io).map { |event| String.new(event.payload) }
             else
-              raise "Failed to converse with model: #{response.status_code}"
+              return HTTP::Status.new(response.status_code), response.body_io.gets_to_end
             end
           end
         end
@@ -65,7 +66,7 @@ module AWS
         guardrail_version : String? = nil,
         performance_config_latency : String? = nil,
         trace : String? = nil,
-      ) : Iterator(InvokeStreamEvent)
+      ) : Iterator(String) | Tuple(HTTP::Status, String)
         headers = HTTP::Headers.new
         headers["X-Amzn-Bedrock-Accept"] = accept
         headers["Content-Type"] = "application/json"
@@ -103,9 +104,9 @@ module AWS
           ) do |response|
             if response.success?
               io = response.body_io
-              return EventStream::EventStream.new(io).map { |event| InvokeStreamEvent.from_event(event) }
+              return EventStream::EventStream.new(io).map { |event| InvokeStreamEvent.extract_payload(event) }
             else
-              raise "Failed to invoke model: #{response.status_code}"
+              return HTTP::Status.new(response.status_code), response.body_io.gets_to_end
             end
           end
         end

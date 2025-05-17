@@ -20,17 +20,17 @@ module AWS
 
       AWS::BedrockRuntime.handle_json_access_pattern([] of String, [] of String)
 
-      def self.from_event(event : EventStream::EventMessage) : ConverseStreamEvent
-        payload_hash = JSON.parse(String.new(event.payload)).as_h
+      def self.from_event_payload(json_str : String) : ConverseStreamEvent
+        payload_hash = JSON.parse(json_str).as_h
         if payload_hash["contentBlockIndex"]? && payload_hash["delta"]?
-          ContentBlockDelta.from_json(String.new(event.payload))
+          ContentBlockDelta.from_json(json_str)
         elsif payload_hash["stopReason"]?
-          ContentBlockStop.from_json(String.new(event.payload))
+          ContentBlockStop.from_json(json_str)
         elsif payload_hash["metrics"]?
-          Metrics.from_json(String.new(event.payload))
+          Metrics.from_json(json_str)
         else
           # {"contentBlockIndex" => 0, "p" => "abcdefghij"}
-          ConverseStreamEvent.from_json(String.new(event.payload))
+          ConverseStreamEvent.from_json(json_str)
         end
       end
 
@@ -85,14 +85,13 @@ module AWS
 
       AWS::BedrockRuntime.handle_json_access_pattern([] of String, [] of String)
 
-      def self.from_event(event : EventStream::EventMessage) : InvokeStreamEvent
+      def self.extract_payload(event : EventStream::EventMessage) : String
         payload_hash = JSON.parse(String.new(event.payload)).as_h
         # named "bytes" but that doesn't make sense for JSON
         encoded_bytes = payload_hash["bytes"].as_s
         # The only other field is "p" which appears to be a sanity check. Its value is some amount of the alphabet, in order, lowercase, then uppercase, then digits.
         inner_json_bytes = Base64.decode(encoded_bytes)
-        json_str = String.new(inner_json_bytes)
-        from_event_payload(json_str)
+        String.new(inner_json_bytes)
       end
 
       def self.from_event_payload(json_str : String) : InvokeStreamEvent
