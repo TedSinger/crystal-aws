@@ -41,7 +41,6 @@ module AWS
           raise "Invalid STS token: #{@sts_token}"
         end
 
-        puts "body: #{body}"
         http do |client|
           client.post(
             path: "/model/#{model_id}/converse-stream",
